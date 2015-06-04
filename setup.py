@@ -9,7 +9,7 @@ except ImportError:
     from distutils.core import setup, Command, find_packages
 
 
-__version__ = "0.2.2"
+__version__ = "0.3.2"
 
 
 if sys.argv[-1] == 'publish':
@@ -28,15 +28,10 @@ requirements = [
     'gnupg==2.0.2',
     'PyYAML==3.11',
     'tabulate==0.7.5',
-    'tinydb==2.3.2'
+    'tinydb==2.3.2',
+    'GitPython==1.0.1'
 ]
 
-tests_requirements = [
-    "pytest",
-    "pytest-cov",
-    "pytest-mock",
-    "mock"
-]
 
 long_description = open('README.md').read() + "\n\n"
 
@@ -80,7 +75,6 @@ setup(
     },
     install_requires=requirements,
     cmdclass={'test': PyTest, 'coverage': PyTestCoverage},
-    tests_requires=tests_requirements,
     test_suite='tests',
     classifiers=[
         'Development Status :: 4 - Beta',

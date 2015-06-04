@@ -2,6 +2,19 @@
 
 ## Versions
 
+### 0.3.2
+
++ **√** Minor fix on cryptor find binary
+
+### 0.3.1
+
++ **√** Minor fix on which command not following symlinks on gnupg
+
+### 0.3
+
++ **√** Support version control passpie database with git
++ **√** Minor bug fixes
+
 ### 0.2.2
 
 + **√** Support `gpg2` binary
