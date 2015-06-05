@@ -69,18 +69,18 @@ def test_cli_remove_delete_credential_found_by_database(mock_db):
     assert 'foo' not in result_print.output
 
 
-def test_cli_copy_credential_password_to_database(mocker, mock_db, mock_cryptor):
+def test_cli_copy_credential_password_to_clipboard(mocker, mock_db, mock_cryptor):
     fullname = 'foo@bar'
     password = 's3cr3t'
     mocker.patch('passpie.cli.ensure_passphrase')
-    mock_copy_to_clipboard = mocker.patch('passpie.cli.copy_to_clipboard')
+    mock_clipboard = mocker.patch('passpie.cli.clipboard')
     mock_cryptor.decrypt.return_value = password
     runner = CliRunner()
     result = runner.invoke(cli.copy, [fullname], input='passphrase')
 
     assert result.exit_code == 0
-    assert mock_copy_to_clipboard.called
-    mock_copy_to_clipboard.assert_called_once_with(password)
+    assert mock_clipboard.copy.called
+    mock_clipboard.copy.assert_called_once_with(password)
 
 
 def test_cli_reset_database_overwrite_old_keys(mocker, mock_db, mock_cryptor):
@@ -128,7 +128,7 @@ def test_cli_reset_purges_all_elements(mocker, mock_db, mock_cryptor):
 
 
 def test_init_success(mocker, mock_cryptor):
-    mocker.patch('passpie.cli.Git')
+    mocker.patch('passpie.cli.Repository')
     passphrase = "PASS2pie"
     runner = CliRunner()
     result = runner.invoke(cli.init, ["--passphrase", passphrase])
@@ -139,7 +139,7 @@ def test_init_success(mocker, mock_cryptor):
 
 
 def test_init_prints_error_when_keys_exist(mocker, mock_cryptor):
-    mocker.patch('passpie.cli.Git')
+    mocker.patch('passpie.cli.Repository')
     mock_cryptor.create_keys.side_effect = FileExistsError
     passphrase = "PASS2pie"
     path = cli.config.path
@@ -153,7 +153,7 @@ def test_init_prints_error_when_keys_exist(mocker, mock_cryptor):
 
 
 def test_init_has_success_when_keys_exits_and_force_is_passed(mocker, mock_cryptor):
-    mocker.patch('passpie.cli.Git')
+    mocker.patch('passpie.cli.Repository')
     mock_shutil = mocker.patch('passpie.cli.shutil')
     passphrase = "PASS2pie"
 
@@ -165,8 +165,8 @@ def test_init_has_success_when_keys_exits_and_force_is_passed(mocker, mock_crypt
     mock_shutil.rmtree.assert_called_once_with(cli.config.path)
 
 
-def test_copy_to_clipboard_decrypts_password_to_pass_to_pyperclip(mocker, mock_cryptor):
-    mock_copy_to_clipboard = mocker.patch('passpie.cli.copy_to_clipboard')
+def test_copy_decrypts_password(mocker, mock_cryptor):
+    mock_clipboard = mocker.patch('passpie.cli.clipboard')
     mocker.patch('passpie.cli.get_credential_or_abort')
     mocker.patch('passpie.cli.ensure_passphrase')
     fullname = "foo@bar"
@@ -177,7 +177,7 @@ def test_copy_to_clipboard_decrypts_password_to_pass_to_pyperclip(mocker, mock_c
     result = runner.invoke(cli.copy, [fullname, "--passphrase", passphrase])
 
     assert result.exit_code is 0
-    mock_copy_to_clipboard.assert_called_once_with(mock_password)
+    mock_clipboard.copy.assert_called_once_with(mock_password)
 
 
 def test_import_prints_nothing_when_no_importer_is_found(mocker, mock_cryptor):
@@ -397,13 +397,13 @@ def test_remove_dont_ask_confimation_when_yes_passed(mocker, mock_db):
 
 
 def test_add_with_copy_option_add_pass_to_clipboard(mocker, mock_db, mock_cryptor):
-    mock_copy_to_clipboard = mocker.patch('passpie.cli.copy_to_clipboard')
+    mock_clipboard = mocker.patch('passpie.cli.clipboard')
 
     runner = CliRunner()
     result = runner.invoke(cli.add, ['john.doe@spam', '--random', '--copy'])
 
     assert result.exit_code == 0
-    assert mock_copy_to_clipboard.called is True
+    assert mock_clipboard.copy.called
 
 
 def test_remove_credentials_in_bulk(mocker, mock_db):
@@ -485,3 +485,102 @@ def test_update_password_from_prompt_encrypts_password(mocker, mock_cryptor, moc
     assert result.exit_code == 0
     assert mock_cryptor.encrypt.called
     mock_cryptor.encrypt.assert_called_once_with(chosen_password)
+
+
+def test_log_with_reset_to_pass_reset_to_number_to_git_reset(mocker):
+    mocker.patch('passpie.cli.ensure_dependencies')
+    MockRepository = mocker.patch('passpie.cli.Repository')
+    mock_logger = mocker.patch('passpie.cli.logger')
+    mock_repo = MockRepository()
+    index = 0
+
+    runner = CliRunner()
+    result = runner.invoke(cli.log, ['--reset-to', index])
+
+    assert result.exit_code == 0
+    mock_repo.reset.assert_called_once_with(index)
+    assert mock_logger.debug.called
+
+
+def test_log_with_init_call_git_init_on_path(mocker):
+    mocker.patch('passpie.cli.ensure_dependencies')
+    MockRepository = mocker.patch('passpie.cli.Repository')
+    mock_logger = mocker.patch('passpie.cli.logger')
+    mock_repo = MockRepository()
+    index = 0
+
+    runner = CliRunner()
+    result = runner.invoke(cli.log, ['--init'])
+
+    assert result.exit_code == 0
+    assert mock_repo.init.called
+    assert mock_logger.debug.called
+
+
+def test_log_prints_commit_list_when_not_option_is_passed(mocker):
+    mocker.patch('passpie.cli.ensure_dependencies')
+    MockRepository = mocker.patch('passpie.cli.Repository')
+    mock_logger = mocker.patch('passpie.cli.logger')
+    mock_repo = MockRepository()
+    commits = [
+        (2, mocker.MagicMock(message='Third commit')),
+        (1, mocker.MagicMock(message='Second commit')),
+        (0, mocker.MagicMock(message='First commit'))
+    ]
+    index = 0
+    MockRepository().commit_list.return_value = commits
+
+    runner = CliRunner()
+    result = runner.invoke(cli.log)
+
+    assert result.exit_code == 0
+    for index, commit in commits:
+        assert "[{}] {}".format(index, commit.message) in result.output
+
+
+def test_cli_set_config_database_if_database_option_passed(mocker):
+    path = '/path/to/database'
+    mocker.patch('passpie.cli.ensure_dependencies')
+    mocker.patch('passpie.cli.ensure_is_database')
+    mocker.patch('passpie.cli.Database')
+    mocker.patch('passpie.cli.click.Path', new_callable=str)
+    mock_config = mocker.patch('passpie.cli.config')
+
+    runner = CliRunner()
+    result = runner.invoke(cli.cli, ['--database', path])
+
+    assert result.exit_code == 0
+    assert mock_config.path == path
+
+
+def test_cli_set_logger_level_to_debug_when_verbose_option(mocker):
+    mocker.patch('passpie.cli.ensure_dependencies')
+    mocker.patch('passpie.cli.ensure_is_database')
+    mock_logger = mocker.patch('passpie.cli.logger')
+
+    runner = CliRunner()
+    result = runner.invoke(cli.cli, ['--verbose'])
+
+    assert mock_logger.setLevel.called
+    mock_logger.setLevel.assert_called_once_with(cli.logging.DEBUG)
+
+
+def test_cli_copy_to_stdout_with_to_stdout_option(mocker, mock_cryptor):
+    credential = {
+        'password': 's3cr3t'
+    }
+    mocker.patch('passpie.cli.ensure_passphrase')
+    mocker.patch('passpie.cli.Database')
+    mocker.patch('passpie.cli.get_credential_or_abort',
+                 return_value=credential)
+    mock_cryptor.decrypt.return_value = credential['password']
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.copy,
+        ['foo@bar', '--to', 'stdout', '--passphrase', 'passphrase']
+    )
+
+    print(result.output)
+    assert result.exit_code == 0
+    assert result.output.strip() == credential['password']

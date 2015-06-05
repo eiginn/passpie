@@ -5,9 +5,8 @@ from git import Repo
 from git.exc import InvalidGitRepositoryError
 
 from ._compat import which
-from .utils import reverse_enumerate
+from .utils import reverse_enumerate, logger
 
-logger = logging.getLogger('passpie')
 
 def ensure_git(return_value=None):
     def decorator(func):
@@ -27,13 +26,13 @@ def ensure_git(return_value=None):
     return decorator
 
 
-class Git(object):
+class Repository(object):
 
     def __init__(self, path):
         self.path = path
 
     @ensure_git()
-    def init(self, message='Initialized database'):
+    def init(self, message='Initialized git repository'):
         repo = Repo.init(self.path)
         repo.git.add(all=True)
         repo.index.commit(message)

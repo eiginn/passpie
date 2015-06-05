@@ -4,21 +4,29 @@ from pkg_resources import get_distribution, DistributionNotFound
 import errno
 import logging
 import os
-import random
+from random import SystemRandom
 import string
 
 import yaml
 
 from ._compat import which
 
+
 import_module = __import__
+
+logger = logging.getLogger('passpie')
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(name)s::%(levelname)s::%(module)s::%(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 def genpass(length=32, special="_-#|+="):
     """generates a password with random chararcters
     """
     chars = special + string.ascii_letters + string.digits + " "
-    return "".join(random.choice(chars) for _ in range(length))
+    return "".join(SystemRandom().choice(chars) for _ in range(length))
 
 
 @contextmanager

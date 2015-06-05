@@ -5,7 +5,9 @@ parts of this code from pyperclip: https://github.com/asweigart/pyperclip
 from subprocess import Popen, PIPE
 import ctypes
 import platform
+
 from ._compat import which, is_python2
+from .utils import logger
 
 
 text_type = unicode if is_python2() else str
@@ -77,13 +79,18 @@ def _copy_linux(text):
 
 
 def copy(text):
-    if platform.system() == 'Darwin':
+    platform_name = platform.system().lower()
+    if platform_name == 'darwin':
         _copy_osx(text)
-    elif platform.system() == 'Linux':
+    elif platform_name == 'linux':
         _copy_linux(text)
-    elif platform.system() == 'Windows':
+    elif platform_name == 'windows':
         _copy_windows(text)
-    elif 'cygwin' in platform.system().lower() == '':
+    elif 'cygwin' in platform_name.lower():
         _copy_cygwin(text)
     else:
-        raise SystemError('system not supported')
+        msg = "platform '{}' copy to clipboard not supported".format(
+            platform_name)
+        logger.error(msg)
+        return
+    logger.debug('text copied to clipboard')

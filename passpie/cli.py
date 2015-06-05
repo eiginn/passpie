@@ -15,9 +15,9 @@ from .credential import split_fullname, make_fullname
 from .crypt import Cryptor
 from .database import Database
 from .importers import find_importer
-from .utils import genpass, load_config, ensure_dependencies
+from .utils import genpass, load_config, ensure_dependencies, logger
 from .table import Table
-from .history import Git
+from .history import Repository
 
 
 __version__ = "0.3.2"
@@ -31,19 +31,12 @@ DEFAULT_CONFIG = {
     'table_format': 'fancy_grid',
     'headers': ['name', 'login', 'password', 'comment'],
     'colors': {'name': 'yellow', 'login': 'green'},
-    'git': True
+    'repo': True
 }
 config = load_config(DEFAULT_CONFIG, USER_CONFIG_PATH)
 genpass = partial(genpass,
                   length=config.genpass_length,
                   special=config.genpass_symbols)
-
-logger = logging.getLogger('passpie')
-handler = logging.StreamHandler()
-formatter = logging.Formatter(
-    '%(name)s::%(levelname)s::%(module)s::%(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 
 class AliasedGroup(click.Group):
@@ -114,15 +107,6 @@ def print_table(credentials):
         click.echo(table.render(credentials))
 
 
-def copy_to_clipboard(text):
-    try:
-        clipboard.copy(text)
-    except SystemError as exc:
-        message = str(exc)
-        raise click.ClickException(click.style(message, fg='red'))
-    click.secho("Password copied to clipboard", fg="yellow")
-
-
 @click.group(cls=AliasedGroup if config.short_commands else click.Group,
              invoke_without_command=True)
 @click.option('-D', '--database', help='Alternative database path',
@@ -164,17 +148,17 @@ def complete(shell_name, commands):
 @click.option('--passphrase', prompt=True, hide_input=True,
               confirmation_prompt=True)
 @click.option('--force', is_flag=True, help="Force overwrite database")
-@click.option('--no-git', is_flag=True, help="Don't create a git repository")
-def init(passphrase, force, no_git):
+@click.option('--no-repo', is_flag=True, help="Don't create a repo repository")
+def init(passphrase, force, no_repo):
     if force and os.path.isdir(config.path):
         shutil.rmtree(config.path)
 
     try:
         with Cryptor(config.path) as cryptor:
             cryptor.create_keys(passphrase)
-        if config.git and not no_git:
-            git = Git(config.path)
-            git.init()
+        if config.repo and not no_repo:
+            repo = Repository(config.path)
+            repo.init()
     except FileExistsError:
         message = "Database exists in {}. `--force` to overwrite".format(
             config.path)
@@ -210,11 +194,11 @@ def add(fullname, password, comment, force, copy):
                           modified=datetime.now())
         db.insert(credential)
         if copy:
-            copy_to_clipboard(password)
+            clipboard.copy(password)
 
-        git = Git(config.path)
+        repo = Repository(config.path)
         message = 'Added {}'.format(credential['fullname'])
-        git.commit(message=message)
+        repo.commit(message=message)
         logger.debug(message)
     else:
         message = "Credential {} already exists. --force to overwrite".format(
@@ -263,8 +247,8 @@ def update(fullname, name, login, password, comment):
 
         message = 'Updated {}'.format(credential['fullname'])
         logger.debug(message)
-        git = Git(config.path)
-        git.commit(message)
+        repo = Repository(config.path)
+        repo.commit(message)
 
 
 @cli.command(help="Remove credential")
@@ -288,8 +272,8 @@ def remove(fullname, yes):
         fullnames = ', '.join(c['fullname'] for c in credentials)
         message = 'Removed {}'.format(fullnames)
         logger.debug(message)
-        git = Git(config.path)
-        git.commit(message)
+        repo = Repository(config.path)
+        repo.commit(message)
 
 
 @cli.command(help="Copy credential password to clipboard/stdout")
@@ -306,7 +290,7 @@ def copy(fullname, passphrase, to):
         decrypted = cryptor.decrypt(credential["password"],
                                     passphrase=passphrase)
         if to == 'clipboard':
-            copy_to_clipboard(decrypted)
+            clipboard.copy(decrypted)
         elif to == 'stdout':
             click.echo(decrypted)
 
@@ -417,8 +401,8 @@ def import_database(path):
                 cred['password'] = encrypted
         db.insert_multiple(credentials)
 
-        git = Git(config.path)
-        git.commit(message='Imported credentials from {}'.format(path))
+        repo = Repository(config.path)
+        repo.commit(message='Imported credentials from {}'.format(path))
 
 
 @cli.command(help='Renew passpie database and re-encrypt credentials')
@@ -450,23 +434,23 @@ def reset(passphrase):
 
     message = 'Reset database'
     logger.debug(message)
-    git = Git(config.path)
-    git.commit(message)
+    repo = Repository(config.path)
+    repo.commit(message)
 
 
 @cli.command(help='Shows passpie database changes history')
 @click.option("--init", is_flag=True, help="Enable history tracking")
 @click.option("--reset-to", default=-1, help="Undo changes in database")
 def log(reset_to, init):
-    git = Git(config.path)
+    repo = Repository(config.path)
     if reset_to >= 0:
-        git.reset(number=reset_to)
-        logger.debug('reset database to index: %s', reset_to)
+        repo.reset(reset_to)
+        logger.debug('reset database repository to index: %s', reset_to)
     elif init:
-        git.init()
-        logger.debug('initialized a git repository on: %s', config.path)
+        repo.init()
+        logger.debug('initialized a repository on: %s', config.path)
     else:
-        for number, commit in git.commit_list():
+        for number, commit in repo.commit_list():
             number = click.style(str(number), fg='magenta')
             message = commit.message.strip()
             click.echo("[{}] {}".format(number, message))
