@@ -1,10 +1,14 @@
-from functools import partial
+from datetime import datetime
+import logging
 import os
 import shutil
 
-from tinydb import TinyDB, Storage
+from tinydb import TinyDB, Storage, where, Query
 import yaml
+
 from .utils import mkdir_open
+from .history import Repository
+from .credential import split_fullname, make_fullname
 
 
 class PasspieStorage(Storage):
@@ -14,10 +18,14 @@ class PasspieStorage(Storage):
         super(PasspieStorage, self).__init__()
         self.path = path
 
+    def make_credpath(self, name, login):
+        dirname, filename = name, login + self.extension
+        credpath = os.path.join(self.path, dirname, filename)
+        return credpath
+
     def delete(self, credentials):
         for cred in credentials:
-            dirname, filename = cred["name"], cred["login"] + self.extension
-            credpath = os.path.join(self.path, dirname, filename)
+            credpath = self.make_credpath(cred["name"], cred["login"])
             os.remove(credpath)
             if not os.listdir(os.path.dirname(credpath)):
                 shutil.rmtree(os.path.dirname(credpath))
@@ -40,10 +48,77 @@ class PasspieStorage(Storage):
         self.delete(deleted)
 
         for eid, cred in data["_default"].items():
-            dirname, filename = cred["name"], cred["login"] + self.extension
-            credpath = os.path.join(self.path, dirname, filename)
+            credpath = self.make_credpath(cred["name"], cred["login"])
             with mkdir_open(credpath, "w") as f:
                 f.write(yaml.dump(dict(cred), default_flow_style=False))
 
 
-Database = partial(TinyDB, storage=PasspieStorage)
+class Database(TinyDB):
+
+    def __init__(self, config, storage=PasspieStorage):
+        self.config = config
+        self.path = config['path']
+        self.repo = Repository(self.path,
+                               autopull=config.get('autopull'),
+                               autopush=config.get('autopush'))
+        PasspieStorage.extension = config['extension']
+        super(Database, self).__init__(self.path, storage=storage)
+
+    def has_keys(self):
+        return os.path.exists(os.path.join(self.path, '.keys'))
+
+    def filename(self, fullname):
+        login, name = split_fullname(fullname)
+        return self._storage.make_credpath(name=name, login=login)
+
+    def credential(self, fullname):
+        login, name = split_fullname(fullname)
+        Credential = Query()
+        if login is None:
+            creds = self.get(Credential.name == name)
+        else:
+            creds = self.get((Credential.login == login) & (Credential.name == name))
+        return creds
+
+    def add(self, fullname, password, comment):
+        login, name = split_fullname(fullname)
+        if login is None:
+            logging.error('Cannot add credential with empty login. use "@<name>" syntax')
+            return None
+        credential = dict(fullname=fullname,
+                          name=name,
+                          login=login,
+                          password=password,
+                          comment=comment,
+                          modified=datetime.now())
+        self.insert(credential)
+        return credential
+
+    def update(self, fullname, values):
+        values['fullname'] = make_fullname(values["login"], values["name"])
+        values['modified'] = datetime.now()
+        self.table().update(values, (where("fullname") == fullname))
+
+    def credentials(self, fullname=None):
+        if fullname:
+            login, name = split_fullname(fullname)
+            Credential = Query()
+            if login is None:
+                creds = self.search(Credential.name == name)
+            else:
+                creds = self.search((Credential.login == login) & (Credential.name == name))
+        else:
+            creds = self.all()
+        return sorted(creds, key=lambda x: x["name"] + x["login"])
+
+    def remove(self, fullname):
+        self.table().remove(where('fullname') == fullname)
+
+    def matches(self, regex):
+        Credential = Query()
+        credentials = self.search(
+            Credential.name.matches(regex) |
+            Credential.login.matches(regex) |
+            Credential.comment.matches(regex)
+        )
+        return sorted(credentials, key=lambda x: x["name"] + x["login"])

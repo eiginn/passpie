@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import io
 import os
 import sys
 
@@ -9,7 +10,10 @@ except ImportError:
     from distutils.core import setup, Command, find_packages
 
 
-__version__ = "0.3.3"
+__version__ = "1.4.1"
+
+with io.open('README.rst', encoding='utf-8') as readme_file:
+    long_description = readme_file.read() + "\n\n"
 
 
 if sys.argv[-1] == 'publish':
@@ -21,27 +25,24 @@ if sys.argv[-1] == 'publish':
 if sys.argv[-1] == 'tag':
     os.system("git tag -a v%s -m 'version v%s'" % (__version__, __version__))
     os.system("git push --tags")
+    os.system("git push")
     sys.exit()
 
+
 requirements = [
-    'click==4.0',
-    'gnupg==2.0.2',
+    'click==6.2',
     'PyYAML==3.11',
     'tabulate==0.7.5',
-    'tinydb==2.3.2',
-    'GitPython==1.0.1',
-    'psutil==3.0.1',
+    'tinydb==3.1.2',
+    'rstr==2.2.3',
 ]
-
-
-long_description = open('README.md').read() + "\n\n"
 
 
 class PyTest(Command):
     user_options = [('pytest-args=', 'a', "Arguments to pass to py.test")]
 
     def initialize_options(self):
-        self.pytest_args = []
+        self.pytest_args = ["-v", "tests/"]
 
     def finalize_options(self):
         pass
@@ -55,7 +56,12 @@ class PyTest(Command):
 class PyTestCoverage(PyTest):
 
     def initialize_options(self):
-        self.pytest_args = ['--cov', 'passpie']
+        self.pytest_args = [
+            "-v", "tests",
+            "--cov", 'passpie',
+            "--cov-config", ".coveragerc",
+            "--cov-report", "term-missing",
+        ]
 
 
 setup(
@@ -66,7 +72,7 @@ setup(
     long_description=long_description,
     author='Marcwebbie',
     author_email='marcwebbie@gmail.com',
-    url='https://marcwebbie.github.io/passpie',
+    url='https://github.com/marcwebbie/passpie',
     download_url='https://github.com/marcwebbie/passpie',
     packages=find_packages(),
     entry_points={

@@ -1,13 +1,13 @@
 """
 parts of this code from pyperclip: https://github.com/asweigart/pyperclip
 """
-
-from subprocess import Popen, PIPE
 import ctypes
+import logging
 import platform
+import time
 
-from ._compat import which, is_python2
-from .utils import logger
+from . import process
+from ._compat import *
 
 
 text_type = unicode if is_python2() else str
@@ -22,7 +22,25 @@ OSX_COMMANDS = {
 }
 
 
-def _copy_windows(text):
+def ensure_commands(commands):
+    for command_name, command in commands.items():
+        if which(command_name) and command:
+            return command
+    else:
+        logging.error('missing commands: ', ' or '.join(commands))
+
+
+def clean(command, delay):
+    for dot in ['.' for _ in range(delay)]:
+        sys.stdout.write(dot)
+        sys.stdout.flush()
+        time.sleep(1)
+    else:
+        process.call(command, input='\b')
+        print('')
+
+
+def _copy_windows(text, clear=0):
     GMEM_DDESHARE = 0x2000
     CF_UNICODETEXT = 13
     d = ctypes.windll  # cdll expects 4 more bytes in user32.OpenClipboard(0)
@@ -40,7 +58,7 @@ def _copy_windows(text):
     d.user32.CloseClipboard()
 
 
-def _copy_cygwin(text):
+def _copy_cygwin(text, clear=0):
     GMEM_DDESHARE = 0x2000
     CF_UNICODETEXT = 13
     d = ctypes.cdll
@@ -57,40 +75,33 @@ def _copy_cygwin(text):
     d.user32.CloseClipboard()
 
 
-def ensure_commands(commands):
-    for command_name, command in commands.items():
-        if which(command_name) and command:
-            return command
-    else:
-        raise SystemError('missing commands: ',
-                          ' or '.join(commands))
-
-
-def _copy_osx(text):
+def _copy_osx(text, clear=0):
     command = ensure_commands(OSX_COMMANDS)
-    p = Popen(command, stdin=PIPE, close_fds=True)
-    p.communicate(input=text)
+    process.call(command, input=text)
+    if clear:
+        clean(command, delay=clear)
 
 
-def _copy_linux(text):
+def _copy_linux(text, clear=0):
     command = ensure_commands(LINUX_COMMANDS)
-    p = Popen(command, stdin=PIPE, close_fds=True)
-    p.communicate(input=text)
+    process.call(command, input=text)
+    if clear:
+        clean(command, delay=clear)
 
 
-def copy(text):
+def copy(text, clear=0):
     platform_name = platform.system().lower()
     if platform_name == 'darwin':
-        _copy_osx(text)
+        _copy_osx(text, clear)
     elif platform_name == 'linux':
-        _copy_linux(text)
+        _copy_linux(text, clear)
     elif platform_name == 'windows':
-        _copy_windows(text)
+        _copy_windows(text, clear)
     elif 'cygwin' in platform_name.lower():
-        _copy_cygwin(text)
+        _copy_cygwin(text, clear)
     else:
         msg = "platform '{}' copy to clipboard not supported".format(
             platform_name)
-        logger.error(msg)
+        logging.error(msg)
         return
-    logger.debug('text copied to clipboard')
+    logging.debug('text copied to clipboard')
